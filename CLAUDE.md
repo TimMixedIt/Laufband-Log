@@ -41,9 +41,10 @@ python3 tests/make_demo.py /tmp/ll             # drei Wochen Demo-Workouts
 ```
 
 ## Deploy / Update
-Ordner `laufband_log` nach `/addons/laufband_log` auf HA kopieren (Studio Code Server
-oder Samba), `version` in `config.yaml` erhöhen, App Store → Nach Updates suchen →
-Aktualisieren. Workouts bleiben in `/data` erhalten.
+HA bindet das öffentliche Repo https://github.com/TimMixedIt/Laufband-Log als
+App-Repository ein (Slug `a31c6c30_laufband_log`). Update: `version` in `config.yaml`
+erhöhen, pushen, App Store → Nach Updates suchen → Aktualisieren. HA baut das Image
+lokal. Workouts bleiben in `/data` erhalten.
 
 ## Regeln
 - Sicherheit Steuerung: Start nur per Halten (0,8 s) und nur aus dem Stillstand; Tempo nur
