@@ -1,0 +1,45 @@
+name: Laufband-Log
+version: "1.1.0"
+slug: laufband_log
+description: Speichert Walking-Pad-Workouts und zeigt sie mit Verlaufsdiagrammen an
+arch:
+  - amd64
+  - aarch64
+init: false
+startup: application
+boot: auto
+ingress: true
+ingress_port: 8099
+panel_icon: mdi:walk
+panel_title: Laufband
+homeassistant_api: true
+options:
+  state_entity: sensor.walkingpad_state
+  speed_entity: sensor.walkingpad_speed
+  distance_entity: sensor.walkingpad_distance
+  duration_entity: sensor.walkingpad_duration
+  calories_entity: sensor.walkingpad_calories
+  steps_entity: sensor.walkingpad_steps
+  min_duration_seconds: 60
+  max_pause_minutes: 30
+  max_disconnect_minutes: 10
+  start_button: button.walkingpad_start
+  pause_button: button.walkingpad_pause_resume
+  stop_button: button.walkingpad_stop
+  speed_number: number.walkingpad_speed
+  max_control_speed: 6.0
+schema:
+  state_entity: str
+  speed_entity: str
+  distance_entity: str
+  duration_entity: str
+  calories_entity: str
+  steps_entity: str?
+  min_duration_seconds: int(0,3600)
+  max_pause_minutes: int(1,240)
+  max_disconnect_minutes: int(1,120)
+  start_button: str
+  pause_button: str
+  stop_button: str
+  speed_number: str
+  max_control_speed: float(0.5,12)

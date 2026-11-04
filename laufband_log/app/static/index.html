@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<title>Laufband</title>
+<link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+<main id="app">
+  <section class="display" id="display" aria-live="polite">
+    <div class="display-glass">
+      <div class="readout">
+        <span class="seg ghost" aria-hidden="true">8.8</span>
+        <span class="seg" id="d-speed">-.-</span>
+        <span class="readout-unit">km/h</span>
+      </div>
+      <div class="display-side">
+        <p class="pad-status" id="d-status"><span class="dot"></span><span>Verbinde …</span></p>
+        <dl class="live-stats" id="d-stats" hidden>
+          <div><dt>Zeit</dt><dd class="c-time" id="d-time">0:00</dd></div>
+          <div><dt>Strecke</dt><dd class="c-dist" id="d-dist">0,00 km</dd></div>
+          <div><dt>kcal</dt><dd class="c-kcal" id="d-kcal">0</dd></div>
+        </dl>
+      </div>
+    </div>
+    <div class="controls" id="controls" hidden>
+      <div class="ctl-speed" id="ctl-speed" hidden>
+        <button class="ctl-round" data-step="-0.2" aria-label="Langsamer">−</button>
+        <output class="ctl-target num" id="ctl-target" aria-live="polite">0,0</output>
+        <button class="ctl-round" data-step="0.2" aria-label="Schneller">+</button>
+        <div class="ctl-presets">
+          <button class="ctl-chip" data-preset="3">3,0</button>
+          <button class="ctl-chip" data-preset="4">4,0</button>
+          <button class="ctl-chip" data-preset="5">5,0</button>
+        </div>
+      </div>
+      <div class="ctl-main">
+        <button class="ctl-btn hold" id="c-start"><span class="fill"></span><span class="lbl">Zum Starten halten</span></button>
+        <button class="ctl-btn" id="c-pause" hidden>Pause</button>
+        <button class="ctl-btn stop" id="c-stop" hidden>Stopp</button>
+      </div>
+      <p class="ctl-msg" id="ctl-msg" role="status"></p>
+    </div>
+    <svg class="live-trace" id="d-trace" preserveAspectRatio="none" aria-hidden="true" hidden></svg>
+  </section>
+  <div id="view"></div>
+</main>
+<script src="static/app.js"></script>
+</body>
+</html>
