@@ -1,5 +1,6 @@
-ARG BUILD_FROM
-FROM ${BUILD_FROM}
+# BUILD_ARCH setzt der Supervisor beim Bauen (amd64 / aarch64)
+ARG BUILD_ARCH=amd64
+FROM ghcr.io/home-assistant/${BUILD_ARCH}-base:latest
 
 RUN apk add --no-cache python3 py3-aiohttp
 
