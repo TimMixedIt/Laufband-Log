@@ -74,12 +74,20 @@ def make_app(rec: Recorder, ha: HAClient | None, ingress_only: bool,
         resp = await handler(request)
         if request.path.startswith("/api/") or request.path == "/":
             resp.headers["Cache-Control"] = "no-store"
+        elif request.path.startswith("/static/"):
+            resp.headers["Cache-Control"] = "no-cache"   # immer nachfragen, 304 wenn gleich
         return resp
 
     app = web.Application(middlewares=[guard])
 
     async def index(_):
-        return web.FileResponse(STATIC / "index.html")
+        # Änderungszeit als ?v= an JS/CSS hängen: nach einem Update lädt der
+        # Browser sie sicher neu statt eine alte Version aus dem Cache zu nehmen
+        html = (STATIC / "index.html").read_text()
+        for name in ("app.js", "style.css"):
+            v = int((STATIC / name).stat().st_mtime)
+            html = html.replace(f"static/{name}\"", f"static/{name}?v={v}\"")
+        return web.Response(text=html, content_type="text/html")
 
     async def live(_):
         out = rec.live()
