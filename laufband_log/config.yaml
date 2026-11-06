@@ -1,5 +1,5 @@
 name: Laufband-Log
-version: "1.1.1"
+version: "1.2.0"
 url: https://github.com/TimMixedIt/Laufband-Log
 slug: laufband_log
 description: Speichert Walking-Pad-Workouts und zeigt sie mit Verlaufsdiagrammen an

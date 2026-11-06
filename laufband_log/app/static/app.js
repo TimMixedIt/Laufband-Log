@@ -102,7 +102,7 @@
   // ------------------------------------------------------------- Bedienung
   const ctl = {
     box: $('#controls'), speed: $('#ctl-speed'), target: $('#ctl-target'), msg: $('#ctl-msg'),
-    start: $('#c-start'), pause: $('#c-pause'), stop: $('#c-stop'),
+    start: $('#c-start'), pause: $('#c-pause'), stop: $('#c-stop'), reconnect: $('#c-reconnect'),
   };
   let maxSpeed = 6, padSpeed = 0, target = null, targetTimer = null, busy = false;
 
@@ -110,14 +110,18 @@
     const st = d.pad?.state, a = d.active;
     maxSpeed = d.max_control_speed || 6;
     padSpeed = Number(d.pad?.speed) || 0;
+    const lost = d.ha_connected && (!st || st === 'disconnected');
     const usable = d.ha_connected && st && st !== 'disconnected' && !(a && ['lost', 'ending'].includes(a.phase));
-    ctl.box.hidden = !usable;
+    ctl.box.hidden = !usable && !lost;
+    ctl.reconnect.hidden = !lost;
+    [ctl.start, ctl.pause, ctl.stop].forEach((b) => { if (lost) b.hidden = true; });
+    ctl.speed.hidden = !usable || st !== 'running';
     if (!usable) return;
+    if (ctl.msg.dataset.hint) { ctl.msg.textContent = ''; delete ctl.msg.dataset.hint; }   // Band wieder da
     ctl.start.hidden = !['stopped', 'paused'].includes(st);
     ctl.start.querySelector('.lbl').textContent = st === 'paused' ? 'Zum Fortsetzen halten' : 'Zum Starten halten';
     ctl.pause.hidden = st !== 'running';
     ctl.stop.hidden = !['running', 'paused', 'countdown'].includes(st);
-    ctl.speed.hidden = st !== 'running';
     if (st !== 'running') target = null;
     if (target === null) showTarget(padSpeed);
   }
@@ -146,6 +150,15 @@
 
   ctl.stop.addEventListener('click', () => { target = null; send('stop'); });
   ctl.pause.addEventListener('click', () => send('pause'));
+  ctl.reconnect.addEventListener('click', async () => {
+    ctl.reconnect.disabled = true;
+    await send('reconnect');
+    if (!ctl.msg.textContent) {
+      ctl.msg.textContent = 'Integration neu geladen – Band muss eingeschaltet sein.';
+      ctl.msg.dataset.hint = '1';
+    }
+    ctl.reconnect.disabled = false;
+  });
 
   // Start nur durch Halten (0,8 s) – ein versehentlicher Tipp startet das Band nicht
   let holdTimer = null;

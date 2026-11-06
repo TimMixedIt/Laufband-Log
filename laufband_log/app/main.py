@@ -103,6 +103,12 @@ def make_app(rec: Recorder, ha: HAClient | None, ingress_only: bool,
                 await ha.call_service("button", "press", opts["pause_button"])
             elif action == "stop":
                 await ha.call_service("button", "press", opts["stop_button"])
+            elif action == "reconnect":
+                if state not in ("", "disconnected"):
+                    raise web.HTTPConflict(text="Das Band ist bereits verbunden.")
+                # Integration neu laden – sie verbindet sich danach direkt mit dem Band
+                await ha.call_service("homeassistant", "reload_config_entry",
+                                      opts["state_entity"], timeout=30)
             elif action == "speed":
                 if state != "running":
                     raise web.HTTPConflict(text="Tempo lässt sich nur bei laufendem Band ändern.")

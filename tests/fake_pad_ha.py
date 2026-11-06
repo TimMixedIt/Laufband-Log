@@ -1,6 +1,7 @@
 """Fake-HA mit steuerbarem Band: reagiert auf call_service wie die PitPat-Integration."""
 import asyncio
 import json
+import os
 import time
 
 from aiohttp import web
@@ -11,7 +12,7 @@ LOG = []
 
 class Pad:
     def __init__(self):
-        self.state, self.speed, self.target = "stopped", 0.0, 0.0
+        self.state, self.speed, self.target = os.environ.get("FAKE_STATE", "stopped"), 0.0, 0.0
         self.dist, self.dur = 0.041, 0
         self.subs = []
 
@@ -66,6 +67,8 @@ class Pad:
                 await self.set_state("running")
         elif entity == "button.walkingpad_stop":
             self.target = 0
+            await self.set_state("stopped")
+        elif service == "reload_config_entry":
             await self.set_state("stopped")
         elif entity == "number.walkingpad_speed":
             self.target = float(data["value"])
