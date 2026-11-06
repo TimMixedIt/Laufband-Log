@@ -62,9 +62,8 @@ umbenannt, behalten alte Workouts den alten Namen und erscheinen nur unter „Al
 ## Puls und Schritte von der Apple Watch
 
 Ein Kurzbefehl auf dem iPhone schickt nach jedem Watch-Training Puls und
-Schritte an die App. Die App ordnet die Daten dem Laufband-Workout zu, das sich
-zeitlich mit dem Watch-Training überschneidet, und setzt die Person auf den
-Absender. Das Workout zeigt dann Ø und höchsten Puls, eine Pulskurve und
+Schritte an die App. Die App ordnet die Daten dem jüngsten Laufband-Workout zu
+und setzt die Person auf den Absender. Das Workout zeigt dann Ø und höchsten Puls, eine Pulskurve und
 „Schritte (Watch)“. Live während des Trainings geht das nicht: Die Watch gibt
 ihre Daten erst verzögert an Apple Health weiter.
 
@@ -78,45 +77,33 @@ Voraussetzungen:
   (Netzwerk-Einstellungen der App) unter `http://homeassistant.local:8098/health`.
   Löst `homeassistant.local` nicht auf, nimm die IP von Home Assistant.
 
-### Kurzbefehl anlegen (einmal pro iPhone)
+### Kurzbefehl einrichten (einmal pro iPhone)
 
-Die englischen Namen der Aktionen stehen in Klammern. Je nach iOS-Version
-können die Namen leicht abweichen.
+1. Auf dem iPhone in Safari öffnen und laden:
+   https://github.com/TimMixedIt/Laufband-Log/raw/main/kurzbefehl/Laufband-Watch.shortcut
+   (oder die Datei vom Mac per AirDrop schicken). In der Kurzbefehle-App
+   **Kurzbefehl hinzufügen** tippen.
+2. Beim Import fragt iOS drei Dinge: deinen Namen (genau wie in `people`), den
+   `health_token` und die Adresse (Standard `http://homeassistant.local:8098/health`).
+3. Kurzbefehl einmal von Hand starten, kurz nach einem Laufband-Training. Beim
+   ersten Lauf fragt iOS nach Zugriff auf Health (Herzfrequenz, Schritte) und
+   aufs lokale Netzwerk: erlauben. Die Mitteilung zeigt das Ergebnis.
+4. **Automation → Neu → Apple Watch-Training**: *Endet*, Training
+   *Gehen drinnen* (oder alle), **Sofort ausführen**, Kurzbefehl
+   „Laufband Watch“ wählen. Automationen lassen sich nicht importieren, dieser
+   Schritt muss von Hand sein.
 
-1. **Health-Samples suchen** (Find Health Samples): Typ *Trainings*, sortiert
-   nach *Startdatum*, *Neueste zuerst*, Limit 1. Das ist das gerade beendete
-   Watch-Training.
-2. **Datum formatieren** (Format Date): *Startdatum* des Trainings, Format
-   *ISO 8601*, Zeit einschließen. Variable `Start` nennen. Dasselbe mit dem
-   *Enddatum* als Variable `Ende`.
-3. **Health-Samples suchen**: Typ *Herzfrequenz*, Startdatum *ist nach* dem
-   *Startdatum* des Trainings aus Schritt 1 (das Datum, nicht der Text `Start`),
-   sortiert nach *Startdatum*, *Älteste zuerst*, kein Limit.
-4. **Wiederholen mit jedem** (Repeat with Each) über diese Samples:
-   - **Datum formatieren**: *Startdatum* des Wiederholungsobjekts, ISO 8601 mit Zeit.
-   - **Text**: `<formatiertes Datum>;<Wert des Wiederholungsobjekts>`
-5. Nach der Wiederholung: **Text kombinieren** (Combine Text) mit *Neue Zeile*.
-   Variable `Puls` nennen.
-6. Schritt 3 bis 5 für den Typ *Schritte*, mit diesem Text pro Sample:
-   `<Startdatum ISO>;<Enddatum ISO>;<Wert>;<Quelle>`. Variable `Schritte` nennen.
-   Über die Quelle zählt die App nur das Gerät mit den meisten Schritten
-   (Watch), damit iPhone-Schritte nicht doppelt zählen.
-7. **Inhalte von URL abrufen** (Get Contents of URL):
-   - URL `http://homeassistant.local:8098/health`, Methode *POST*
-   - Header `Authorization` = `Bearer <dein health_token>`
-   - Hauptteil *JSON* mit den Textfeldern `person` (dein Name wie in `people`),
-     `workout_start` = `Start`, `workout_end` = `Ende`, `heart_rate` = `Puls`,
-     `steps` = `Schritte`
-8. **Mitteilung anzeigen** (Show Notification) mit dem Ergebnis von Schritt 7.
-   Die App antwortet z. B. „Laufband 06.11. 18:30: Ø 112 bpm, 4.312 Schritte“
-   oder nennt den Fehler.
+Was der Kurzbefehl tut: Er holt Puls- und Schritt-Samples der letzten 3 Stunden
+aus Health und schickt sie als Textzeilen (`Zeit;Wert` bzw.
+`Start;Ende;Wert;Quelle`) an die App. Die App nimmt das jüngste
+Laufband-Workout der letzten Stunde und schneidet die Daten auf dessen Zeitraum
+zu. Mehrfaches Senden ist unschädlich, die Daten werden ersetzt. Ein späterer
+Handstart (mehr als eine Stunde nach dem Training) findet kein Workout mehr.
 
-Dann unter **Automation → Neu → Apple Watch-Training**: *Endet*, Training
-*Gehen drinnen* (oder alle), **Sofort ausführen**, Kurzbefehl von oben wählen.
-
-Für eine zweite Person: Kurzbefehl per iCloud-Link teilen und nur `person` ändern.
-Mehrfaches Senden ist unschädlich, die Daten werden ersetzt. Ein Kurzbefehl, der
-zu früh lief, lässt sich also später von Hand noch einmal starten.
+Ist nach dem Import eine Aktion leer oder rot, lässt sie sich in der
+Kurzbefehle-App von Hand nachstellen: „Health-Samples suchen“ mit
+*Typ ist Herzfrequenz* bzw. *Schritte* und *Startdatum ist in den letzten 3 Stunden*.
+Neu erzeugen lässt sich die Datei mit `kurzbefehl/make_shortcut.py`.
 
 ## Daten
 

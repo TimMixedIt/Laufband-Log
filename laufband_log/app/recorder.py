@@ -407,19 +407,27 @@ class Recorder:
         self.db.commit()
         return cur.rowcount > 0
 
-    def attach_health(self, ws: float, we: float, hr: list, steps: list,
+    def attach_health(self, ws: float | None, we: float | None, hr: list, steps: list,
                       person: str | None = None, now: float | None = None):
-        """Apple-Watch-Daten dem Workout zuordnen, das sich am meisten mit dem
-        Watch-Training [ws, we] überschneidet. Mehrfaches Senden ersetzt.
+        """Apple-Watch-Daten zuordnen: mit Watch-Zeitfenster [ws, we] dem Workout
+        mit der größten Überschneidung, ohne Fenster dem jüngsten Workout, das in
+        der letzten Stunde lief. Mehrfaches Senden ersetzt.
         hr: [(t, bpm)], steps: [(start, ende, anzahl, quelle)]."""
         now = time.time() if now is None else now
         best, best_ov = None, 0.0
-        for r in self.db.execute("SELECT id, started_at, ended_at FROM workouts"
-                                 " WHERE started_at < ?", (we,)).fetchall():
-            s, e = r["started_at"], r["ended_at"] or now
-            ov = min(e, we) - max(s, ws)
-            if ov > best_ov:
-                best, best_ov = (r["id"], s, e), ov
+        if ws is None:
+            r = self.db.execute("SELECT id, started_at, ended_at FROM workouts"
+                                " WHERE ended_at IS NULL OR ended_at >= ?"
+                                " ORDER BY started_at DESC LIMIT 1", (now - 3600,)).fetchone()
+            if r:
+                best = (r["id"], r["started_at"], r["ended_at"] or now)
+        else:
+            for r in self.db.execute("SELECT id, started_at, ended_at FROM workouts"
+                                     " WHERE started_at < ?", (we,)).fetchall():
+                s, e = r["started_at"], r["ended_at"] or now
+                ov = min(e, we) - max(s, ws)
+                if ov > best_ov:
+                    best, best_ov = (r["id"], s, e), ov
         if not best:
             return None
         wid, s, e = best

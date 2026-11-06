@@ -122,6 +122,10 @@ assert again["hr_count"] == res["hr_count"]
 wA = rec.get_workout(A["id"])
 assert wA["person"] == "Tim" and len(wA["heart_rate"]) == res["hr_count"]
 assert rec.attach_health(1, 2, hr, steps) is None
+# ohne Zeitfenster: jüngstes Workout der letzten Stunde, sonst keins
+latest = rec.list_workouts()[0]
+assert rec.attach_health(None, None, hr, steps, now=latest["ended_at"] + 600)["id"] == latest["id"]
+assert rec.attach_health(None, None, hr, steps, now=latest["ended_at"] + 7200) is None
 
 # --- Migration: alte DB ohne Spalte person ---------------------------------
 import sqlite3  # noqa: E402

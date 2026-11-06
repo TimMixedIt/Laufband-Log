@@ -237,7 +237,10 @@ def make_health_app(rec: Recorder, opts: dict) -> web.Application:
             person = (body.get("person") or "").strip() or None
             if person is not None and person not in opts["people"]:
                 raise ValueError(f"Unbekannte Person {person!r}, erlaubt: {', '.join(opts['people'])}")
-            ws, we = parse_ts(body["workout_start"]), parse_ts(body["workout_end"])
+            if body.get("workout_start"):
+                ws, we = parse_ts(body["workout_start"]), parse_ts(body.get("workout_end") or str(time.time()))
+            else:   # Kurzbefehl direkt nach dem Training: jüngstes Workout der letzten Stunde
+                ws, we = None, None
             hr = [(parse_ts(p[0]), parse_num(p[1])) for p in parse_lines(body.get("heart_rate"), 2)]
             steps = [(parse_ts(p[0]), parse_ts(p[1]), parse_num(p[2]), p[3].strip() if len(p) > 3 else "")
                      for p in parse_lines(body.get("steps"), 3)]
@@ -245,7 +248,8 @@ def make_health_app(rec: Recorder, opts: dict) -> web.Application:
             return web.Response(status=400, text=f"Laufband-Log: Daten unlesbar ({e}).")
         res = rec.attach_health(ws, we, hr, steps, person)
         if not res:
-            return web.Response(status=404, text="Laufband-Log: Kein Laufband-Workout in diesem Zeitraum gefunden.")
+            where = "in diesem Zeitraum" if ws is not None else "in der letzten Stunde"
+            return web.Response(status=404, text=f"Laufband-Log: Kein Laufband-Workout {where} gefunden.")
         when = datetime.fromtimestamp(res["started_at"]).strftime("%d.%m. %H:%M")
         parts = [f"Ø {res['hr_avg']:.0f} bpm" if res["hr_avg"] else "kein Puls"]
         if res["watch_steps"] is not None:
