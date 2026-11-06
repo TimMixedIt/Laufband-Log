@@ -43,7 +43,8 @@ CREATE TABLE IF NOT EXISTS workouts (
     intervals     TEXT DEFAULT '[]',        -- [{"s":..,"e":..,"kind":"pause"|"lost"}]
     spark         TEXT DEFAULT '[]',
     state_json    TEXT DEFAULT '{}',        -- interner Zustand für Neustarts
-    end_reason    TEXT
+    end_reason    TEXT,
+    person        TEXT                      -- wer gelaufen ist
 );
 CREATE TABLE IF NOT EXISTS samples (
     workout_id INTEGER NOT NULL,
@@ -151,6 +152,9 @@ class Recorder:
         self.db = sqlite3.connect(db_path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
+        cols = {r[1] for r in self.db.execute("PRAGMA table_info(workouts)")}
+        if "person" not in cols:   # Datenbanken vor 1.3.0
+            self.db.execute("ALTER TABLE workouts ADD COLUMN person TEXT")
         self.db.commit()
         self.min_duration_s = min_duration_s
         self.max_pause_s = max_pause_s
@@ -243,7 +247,8 @@ class Recorder:
 
     def _start(self, t):
         cur = self.db.execute(
-            "INSERT INTO workouts(status, started_at) VALUES('active', ?)", (t,))
+            "INSERT INTO workouts(status, started_at, person) VALUES('active', ?,"
+            " (SELECT person FROM workouts ORDER BY started_at DESC LIMIT 1))", (t,))
         self.db.commit()
         w = Workout(id=cur.lastrowid, started_at=t, phase_since=t,
                     last_progress_t=t, last_flush=t)
@@ -386,10 +391,15 @@ class Recorder:
         self.db.execute("DELETE FROM workouts WHERE id=?", (wid,))
         self.db.commit()
 
+    def set_person(self, wid: int, person: str | None) -> bool:
+        cur = self.db.execute("UPDATE workouts SET person=? WHERE id=?", (person, wid))
+        self.db.commit()
+        return cur.rowcount > 0
+
     def list_workouts(self):
         rows = self.db.execute(
             "SELECT id, started_at, ended_at, duration_s, distance_km, calories, steps,"
-            " avg_speed, max_speed, pause_s, pause_count, spark FROM workouts"
+            " avg_speed, max_speed, pause_s, pause_count, spark, person FROM workouts"
             " WHERE status='done' ORDER BY started_at DESC").fetchall()
         out = []
         for r in rows:
@@ -434,6 +444,8 @@ class Recorder:
                 "distance_km": tot["distance"], "duration_s": tot["duration"],
                 "calories": tot["calories"], "steps": tot["steps"],
                 "max_speed": w.max_speed,
+                "person": self.db.execute("SELECT person FROM workouts WHERE id=?",
+                                          (w.id,)).fetchone()[0],
                 "recent": [[round(r[0], 1), r[1]] for r in rows],
             }
         return out

@@ -38,6 +38,7 @@ DEFAULTS = {
     "stop_button": "button.walkingpad_stop",
     "speed_number": "number.walkingpad_speed",
     "max_control_speed": 6.0,
+    "people": ["Tim"],
 }
 
 
@@ -83,6 +84,7 @@ def make_app(rec: Recorder, ha: HAClient | None, ingress_only: bool,
         out["ha_error"] = ha.last_error if ha else None
         out["now"] = time.time()
         out["max_control_speed"] = float(opts["max_control_speed"])
+        out["people"] = opts["people"]
         return web.json_response(out)
 
     async def control(request):
@@ -138,6 +140,14 @@ def make_app(rec: Recorder, ha: HAClient | None, ingress_only: bool,
         rec.delete(wid)
         return web.json_response({"ok": True})
 
+    async def set_person(request):
+        person = (await request.json()).get("person") or None
+        if person is not None and person not in opts["people"]:
+            raise web.HTTPBadRequest(text="Unbekannte Person")
+        if not rec.set_person(int(request.match_info["wid"]), person):
+            raise web.HTTPNotFound(text="Workout nicht gefunden")
+        return web.json_response({"ok": True})
+
     async def export_csv(request):
         wid = int(request.match_info["wid"])
         w = rec.get_workout(wid, max_points=10**9)
@@ -168,6 +178,7 @@ def make_app(rec: Recorder, ha: HAClient | None, ingress_only: bool,
     app.router.add_post("/api/control", control)
     app.router.add_get("/api/workouts", workouts)
     app.router.add_get("/api/workouts/{wid:\\d+}", workout)
+    app.router.add_patch("/api/workouts/{wid:\\d+}", set_person)
     app.router.add_delete("/api/workouts/{wid:\\d+}", delete)
     app.router.add_get("/api/workouts/{wid:\\d+}/csv", export_csv)
     app.router.add_static("/static/", STATIC)

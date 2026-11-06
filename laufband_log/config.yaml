@@ -1,5 +1,5 @@
 name: Laufband-Log
-version: "1.2.0"
+version: "1.3.0"
 url: https://github.com/TimMixedIt/Laufband-Log
 slug: laufband_log
 description: Speichert Walking-Pad-Workouts und zeigt sie mit Verlaufsdiagrammen an
@@ -29,6 +29,9 @@ options:
   stop_button: button.walkingpad_stop
   speed_number: number.walkingpad_speed
   max_control_speed: 6.0
+  people:
+    - Tim
+    - Freundin
 schema:
   state_entity: str
   speed_entity: str
@@ -44,3 +47,5 @@ schema:
   stop_button: str
   speed_number: str
   max_control_speed: float(0.5,12)
+  people:
+    - str

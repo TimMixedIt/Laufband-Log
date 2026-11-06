@@ -94,4 +94,30 @@ print("Splits A:", [(s["km"], round(s["dist"], 3), round(s["time_s"]), round(s["
                     for s in det["splits"]])
 print("Punkte A:", len(det["samples"]), "| Rohpunkte:", len(rec.raw_samples(A["id"])))
 print("Spark A:", A["spark"][:12], "...")
+# --- Person: neues Workout übernimmt die Person des letzten ----------------
+assert C["person"] is None
+assert rec.set_person(C["id"], "Freundin") and not rec.set_person(99999, "Tim")
+run(60)
+pad.countdown_and_start(3.0, run)
+run(90)
+assert rec.live()["active"]["person"] == "Freundin"
+pad.stop()
+run(30)
+assert rec.list_workouts()[0]["person"] == "Freundin"
+
+# --- Migration: alte DB ohne Spalte person ---------------------------------
+import sqlite3  # noqa: E402
+OLD = os.path.join(HERE, "old.db")
+if os.path.exists(OLD):
+    os.remove(OLD)
+con = sqlite3.connect(OLD)
+con.execute("CREATE TABLE workouts (id INTEGER PRIMARY KEY, status TEXT NOT NULL, started_at REAL NOT NULL,"
+            " ended_at REAL, duration_s REAL, distance_km REAL, calories REAL, steps REAL, avg_speed REAL,"
+            " max_speed REAL, pause_s REAL, pause_count INTEGER, intervals TEXT, spark TEXT,"
+            " state_json TEXT, end_reason TEXT)")
+con.execute("INSERT INTO workouts(status, started_at, spark) VALUES('done', 1, '[]')")
+con.commit(); con.close()
+assert Recorder(OLD).list_workouts()[0]["person"] is None
+os.remove(OLD)
+
 print("ALLE TESTS OK")

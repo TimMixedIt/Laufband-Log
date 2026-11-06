@@ -51,6 +51,47 @@
     return sameMonth ? `${a}.–${b}` : `${a} – ${b}`;
   }
 
+  // ------------------------------------------------------------- Personen
+  let people = [];
+  // Einfachauswahl als Segmente (role=radio): Tab springt hinein, Pfeiltasten wechseln
+  const whoButtons = (current, all) => (all ? [['', 'Alle'], ...people.map((p) => [p, p])] : people.map((p) => [p, p]))
+    .map(([v, l]) => {
+      const on = v === (current || '');
+      return `<button type="button" role="radio" data-person="${esc(v)}" aria-checked="${on}" tabindex="${on ? 0 : -1}">${esc(l)}</button>`;
+    }).join('');
+  const markWho = (group, b) => group.querySelectorAll('[role=radio]').forEach((x) => {
+    x.setAttribute('aria-checked', x === b); x.tabIndex = x === b ? 0 : -1;
+  });
+  // Auswahl sofort zeigen, bei Fehler zurückspringen
+  function bindWho(group, onPick) {
+    if (!group) return;
+    const pick = async (b) => {
+      const prev = group.querySelector('[aria-checked=true]');
+      if (b === prev) return;
+      markWho(group, b);
+      try { await onPick(b.dataset.person); } catch (e) { markWho(group, prev); throw e; }
+    };
+    group.addEventListener('click', (ev) => {
+      const b = ev.target.closest('[role=radio]');
+      if (b) pick(b).catch(() => {});
+    });
+    group.addEventListener('keydown', (ev) => {
+      const d = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[ev.key];
+      if (!d) return;
+      ev.preventDefault();
+      const all = [...group.querySelectorAll('[role=radio]')];
+      const b = all[(all.indexOf(document.activeElement) + d + all.length) % all.length];
+      b.focus();
+      pick(b).catch(() => {});
+    });
+  }
+  async function setPerson(wid, person) {
+    await api(`api/workouts/${wid}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ person }),
+    });
+    cache.list = null;
+  }
+
   async function api(path, opts) {
     const r = await fetch(path, opts);
     if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
@@ -94,6 +135,15 @@
       $('#d-time').textContent = clock(a.duration_s);
       $('#d-dist').textContent = `${fmt(a.distance_km, 2)} km`;
       $('#d-kcal').textContent = fmt(a.calories);
+    }
+    people = d.people || [];
+    const who = $('#d-who');
+    who.hidden = !a || people.length < 2;
+    const whoKey = a ? `${a.id}|${a.person}|${people}` : '';
+    if (!who.hidden && who.dataset.key !== whoKey) {   // nicht bei jedem Poll neu bauen
+      who.innerHTML = whoButtons(a.person);
+      who.dataset.key = whoKey;
+      who.dataset.wid = a.id;
     }
     drawTrace(a ? a.recent : [], d.now);
     renderControls(d);
@@ -158,6 +208,17 @@
       ctl.msg.dataset.hint = '1';
     }
     ctl.reconnect.disabled = false;
+  });
+
+  bindWho($('#d-who'), async (person) => {
+    try {
+      await setPerson($('#d-who').dataset.wid, person);
+    } catch (e) {
+      ctl.msg.textContent = 'Zuordnung nicht gespeichert. Bitte erneut tippen.';
+      throw e;
+    } finally {
+      pollLive();
+    }
   });
 
   // Start nur durch Halten (0,8 s) – ein versehentlicher Tipp startet das Band nicht
@@ -231,6 +292,8 @@
   // ------------------------------------------------------------- Übersicht
   const cache = { list: null };
   let weekOffset = 0;
+  let personFilter = '';
+  try { personFilter = localStorage.getItem('personFilter') || ''; } catch { /* privates Fenster */ }
 
   async function loadList() {
     if (!cache.list) cache.list = await api('api/workouts');
@@ -308,7 +371,7 @@
       for (const w of ws) {
         html += `<a class="row" href="#/w/${w.id}">
           <div><div class="when">${relDay(w.started_at)}, ${time(w.started_at)}</div>
-            <div class="meta">Dauer ${clock(w.duration_s)}, Ø ${fmt(w.avg_speed, 1)} km/h</div></div>
+            <div class="meta">${!personFilter && w.person ? `${esc(w.person)} · ` : ''}Dauer ${clock(w.duration_s)}, Ø ${fmt(w.avg_speed, 1)} km/h</div></div>
           <div class="big">${fmt(w.distance_km, 2)}<small> km</small></div>
           <svg viewBox="0 0 84 28" aria-hidden="true"><path d="${sparkPath(w.spark)}"/></svg>
         </a>`;
@@ -326,7 +389,18 @@
       view.innerHTML = errorBanner(e);
       return;
     }
-    view.innerHTML = renderWeek(list) + renderRows(list);
+    if (personFilter && !people.includes(personFilter)) personFilter = '';
+    const shown = personFilter ? list.filter((w) => w.person === personFilter) : list;
+    const filter = people.length > 1
+      ? `<div class="who" id="who-filter" role="radiogroup" aria-label="Workouts filtern nach Person">${whoButtons(personFilter, true)}</div>` : '';
+    view.innerHTML = filter + renderWeek(shown) + renderRows(shown);
+    bindWho($('#who-filter'), async (person) => {
+      personFilter = person;
+      try { localStorage.setItem('personFilter', person); } catch { /* egal */ }
+      const focused = document.activeElement?.dataset.person;
+      await renderOverview(view);
+      if (focused !== undefined) $(`#who-filter [data-person="${CSS.escape(focused)}"]`)?.focus();
+    });
     view.querySelectorAll('[data-week]').forEach((b) => b.addEventListener('click', () => {
       weekOffset = Math.min(0, weekOffset + Number(b.dataset.week));
       renderOverview(view);
@@ -518,6 +592,7 @@
         <h1>Gehen auf dem Laufband</h1>
         <p class="hero">${fmt(w.distance_km, 2)}<small> km</small></p>
         <p class="when">${dateStr}, ${time(w.started_at)}–${time(w.ended_at || w.started_at)}</p>
+        ${people.length > 1 ? `<div class="who" id="who" role="radiogroup" aria-label="Wer ist gelaufen?">${whoButtons(w.person)}</div>` : ''}
         ${notes[w.end_reason] ? `<p class="note">${notes[w.end_reason]}</p>` : ''}
       </header>
       <section class="section"><dl class="group metrics">${metrics}</dl></section>
@@ -573,6 +648,11 @@
     resizeObs = new ResizeObserver(() => charts.forEach((c) => c.render()));
     resizeObs.observe(view);
 
+    bindWho($('#who'), (person) => setPerson(w.id, person).catch((e) => {
+      view.insertAdjacentHTML('afterbegin', errorBanner(e));
+      throw e;
+    }));
+
     const del = $('#del'), cancel = $('#del-cancel');
     del.addEventListener('click', async () => {
       if (!del.classList.contains('armed')) {
@@ -610,6 +690,5 @@
 
   window.addEventListener('hashchange', route);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) pollLive(); });
-  route();
-  pollLive();
+  pollLive().then(route);   // erst Personenliste holen, dann Seite bauen
 })();

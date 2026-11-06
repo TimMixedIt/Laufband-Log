@@ -47,6 +47,15 @@ Fernbedienung bleibt der sichere Not-Aus.
 | `start_button`, `pause_button`, `stop_button` | `button.walkingpad_*` | Buttons der Integration |
 | `speed_number` | `number.walkingpad_speed` | Tempo-Regler der Integration |
 | `max_control_speed` | 6.0 | Höchstes Tempo, das die Seite einstellen darf |
+| `people` | Tim, Freundin | Wer das Band nutzt (siehe unten) |
+
+## Mehrere Personen
+
+Stehen in `people` mindestens zwei Namen, lässt sich pro Workout auswählen, wer
+gelaufen ist: live in der Anzeige oben und in der Detailansicht. Ein neues
+Workout übernimmt die Person des vorherigen. In der Übersicht filtern die
+Knöpfe Wochenstatistik und Liste nach Person. Wird ein Name in `people`
+umbenannt, behalten alte Workouts den alten Namen und erscheinen nur unter „Alle“.
 
 ## Daten
 

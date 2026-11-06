@@ -440,3 +440,27 @@ h2 { font-size: 22px; font-weight: 700; letter-spacing: -.01em; }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+/* ------------------------------------------------------------ Wer läuft? */
+/* Segmentierte Einfachauswahl: gleich breite Segmente, 44 px hoch (Touch) */
+.who {
+  display: inline-grid; grid-auto-flow: column; grid-auto-columns: minmax(72px, 1fr);
+  gap: 3px; padding: 3px; margin-top: 12px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+}
+.who button {
+  min-height: 44px; padding: 0 14px; border: 0; border-radius: 9px;
+  background: transparent; color: inherit; font: 600 15px var(--num); cursor: pointer;
+  transition: background-color .15s, opacity .1s;
+}
+.who button:hover { background: var(--hatch); }
+.who button:active { opacity: .6; }
+.who button[aria-checked="true"] { background: var(--text); color: var(--bg); }
+.who[hidden] { display: none; }
+/* im immer dunklen Display */
+.display .who { margin: 14px 0 6px; background: #121417; border-color: #2f3338; color: #b9c3cd; }
+.display .who button:hover { background: #22252a; }
+.display .who button[aria-checked="true"] { background: #e8edf2; color: #111; }
+@media (pointer: fine) { .who button { min-height: 34px; } }
+@media (prefers-contrast: more) { .who, .display .who { border-color: var(--muted); } }
+@media (prefers-reduced-motion: reduce) { .who button { transition: none; } }
