@@ -371,7 +371,7 @@
       for (const w of ws) {
         html += `<a class="row" href="#/w/${w.id}">
           <div><div class="when">${relDay(w.started_at)}, ${time(w.started_at)}</div>
-            <div class="meta">${!personFilter && w.person ? `${esc(w.person)} · ` : ''}Dauer ${clock(w.duration_s)}, Ø ${fmt(w.avg_speed, 1)} km/h</div></div>
+            <div class="meta">${!personFilter && w.person ? `${esc(w.person)} · ` : ''}Dauer ${clock(w.duration_s)}, Ø ${fmt(w.avg_speed, 1)} km/h${w.hr_avg ? `, Ø ${fmt(w.hr_avg)} bpm` : ''}</div></div>
           <div class="big">${fmt(w.distance_km, 2)}<small> km</small></div>
           <svg viewBox="0 0 84 28" aria-hidden="true"><path d="${sparkPath(w.spark)}"/></svg>
         </a>`;
@@ -436,15 +436,17 @@
       const W = Math.max(240, el.clientWidth);
       const vals = pts.map((p) => p[1]).filter((v) => v != null);
       const yMaxRaw = Math.max(o.yFloor || 1, ...vals);
-      const step = niceStep(yMaxRaw / 3);
+      const yMinRaw = o.yMin ? Math.min(...vals) : 0;
+      const step = niceStep((yMaxRaw - yMinRaw) / 3 || 1);
       const yTop = Math.ceil((yMaxRaw * 1.04) / step) * step;
+      const yBot = o.yMin ? Math.max(0, Math.floor((yMinRaw - step / 2) / step) * step) : 0;
       const xMax = Math.max(1, o.xMax);
       const X = (x) => P.l + (x / xMax) * (W - P.l - P.r);
-      const Y = (y) => P.t + (1 - y / yTop) * (H - P.t - P.b);
+      const Y = (y) => P.t + (1 - (y - yBot) / (yTop - yBot)) * (H - P.t - P.b);
       geo = { W, X, Y, xMax };
 
       let grid = '', axis = '';
-      for (let v = 0; v <= yTop + 1e-9; v += step) {
+      for (let v = yBot; v <= yTop + 1e-9; v += step) {
         grid += `<line x1="${P.l}" x2="${W - P.r}" y1="${Y(v)}" y2="${Y(v)}"/>`;
         axis += `<text x="${P.l - 6}" y="${Y(v) + 4}" text-anchor="end">${fmt(v, step < 1 ? 1 : 0)}</text>`;
       }
@@ -473,7 +475,7 @@
         if (seg.length > 1) {
           const d = seg.map((p, i) => `${i ? 'L' : 'M'}${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join('');
           line += d;
-          area += `${d}L${X(seg[seg.length - 1][0]).toFixed(1)},${Y(0)}L${X(seg[0][0]).toFixed(1)},${Y(0)}Z`;
+          area += `${d}L${X(seg[seg.length - 1][0]).toFixed(1)},${Y(yBot)}L${X(seg[0][0]).toFixed(1)},${Y(yBot)}Z`;
         }
         seg = [];
       };
@@ -566,7 +568,10 @@
       + metric('Ø Pace', `${pace(pace_s)}<small> /km</small>`, 'c-speed')
       + metric('Höchsttempo', `${fmt(w.max_speed, 1)}<small> km/h</small>`, 'c-speed')
       + metric('Kalorien', `${fmt(w.calories)}<small> kcal</small>`, 'c-kcal');
-    if (w.steps > 0) metrics += metric('Schritte', fmt(w.steps), 'c-steps');
+    if (w.hr_avg) metrics += metric('Ø Puls', `${fmt(w.hr_avg)}<small> bpm</small>`, 'c-heart')
+      + metric('Höchster Puls', `${fmt(w.hr_max)}<small> bpm</small>`, 'c-heart');
+    if (w.watch_steps != null) metrics += metric('Schritte (Watch)', fmt(w.watch_steps), 'c-steps');
+    else if (w.steps > 0) metrics += metric('Schritte', fmt(w.steps), 'c-steps');
     if (w.pause_count > 0) metrics += metric(w.pause_count === 1 ? 'Pause' : `Pausen (${w.pause_count})`, clock(w.pause_s), 'c-muted');
     if (wall - w.duration_s > 30) metrics += metric('Gesamtdauer', clock(wall), 'c-muted');
 
@@ -581,6 +586,7 @@
       </tr>`;
     }).join('');
 
+    const hr = w.heart_rate || [];
     const hasPause = (w.intervals || []).some((i) => i.kind === 'pause');
     const legend = (hasPause || lost.length) ? `<div class="legend">
         ${hasPause ? '<span class="pause"><i></i>Pause</span>' : ''}
@@ -600,6 +606,10 @@
         <div class="chart-title"><h3>Geschwindigkeit</h3><span class="sum c-speed">Ø ${fmt(w.avg_speed, 1)} km/h</span></div>
         <div class="chart" id="ch-speed"></div>${legend}
       </section>
+      ${hr.length ? `<section class="section group chart-card">
+        <div class="chart-title"><h3>Puls</h3><span class="sum c-heart">Ø ${fmt(w.hr_avg)} bpm</span></div>
+        <div class="chart" id="ch-hr"></div>
+      </section>` : ''}
       <section class="section group chart-card">
         <div class="chart-title"><h3>Strecke</h3><span class="sum c-dist">${fmt(w.distance_km, 2)} km</span></div>
         <div class="chart" id="ch-dist"></div>
@@ -643,6 +653,19 @@
         tip: (p) => `<b class="c-dist">${fmt(p[1], 2)} km</b><br>${when(p[0])}`, onHover: sync,
       }),
     ];
+    if (hr.length) {
+      // Lücken > 60 s (Watch misst nicht) unterbrechen die Linie
+      const hrPts = [];
+      hr.forEach(([t, b], i) => {
+        if (i && t - hr[i - 1][0] > 60) hrPts.push([t - w.started_at - 0.01, null]);
+        hrPts.push([t - w.started_at, b]);
+      });
+      charts.push(makeChart($('#ch-hr'), {
+        points: hrPts, xMax, bands, avg: w.hr_avg, yMin: true, yFloor: 60, color: 'var(--heart)', height: 160,
+        label: `Puls über die Zeit, Durchschnitt ${fmt(w.hr_avg)} bpm, maximal ${fmt(w.hr_max)} bpm`,
+        tip: (p) => `<b class="c-heart">${fmt(p[1])} bpm</b><br>${when(p[0])}`, onHover: sync,
+      }));
+    }
     charts.forEach((c) => c.render());
     resizeObs?.disconnect();
     resizeObs = new ResizeObserver(() => charts.forEach((c) => c.render()));

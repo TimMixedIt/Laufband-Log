@@ -25,6 +25,7 @@ Band steuert. Sprache: Deutsch (UI, Kommentare, Commits).
   - `app/ha_client.py` – Websocket zu HA: `subscribe_entities` (komprimiertes Format a/c/r),
     `call_service` für die Steuerung.
   - `app/main.py` – aiohttp: `/api/live`, `/api/workouts[/id[/csv]]`, `POST /api/control`.
+    Zweiter Port 8098 nur `POST /health` (Apple-Watch-Daten vom iPhone-Kurzbefehl, Token `health_token`).
     Unter Supervisor nur Ingress (172.30.32.2), Token = SUPERVISOR_TOKEN.
   - `app/static/` – Vanilla-JS-SPA ohne Build. Relative URLs (Ingress!), Hash-Routing.
     Diagramme sind selbst gezeichnetes SVG. 7-Segment-Schrift DSEG7 (OFL).
@@ -33,7 +34,8 @@ Band steuert. Sprache: Deutsch (UI, Kommentare, Commits).
 ## Testen (ohne echtes Band)
 ```bash
 pip install aiohttp playwright
-python3 tests/test_recorder.py                 # Logik: Pause, Abbruch, Reset, Neustart
+python3 tests/test_recorder.py                 # Logik: Pause, Abbruch, Reset, Neustart, Watch-Zuordnung
+python3 tests/test_health_parse.py             # Parser für Kurzbefehl-Daten (braucht aiohttp)
 python3 tests/fake_pad_ha.py &                 # steuerbares Fake-Band auf :18123
 DATA_DIR=/tmp/ll HA_URL=http://127.0.0.1:18123 HA_TOKEN=x PORT=18099 python3 laufband_log/app/main.py
 python3 tests/ctl_test.py http://127.0.0.1:18099 /tmp   # Steuerung per Playwright
@@ -54,5 +56,5 @@ lokal. Workouts bleiben in `/data` erhalten.
   `YYYY-MM-DD | Kontext | Fehler | Learning / Fix`. Vor neuen Techniken dort nachsehen.
 
 ## Ideen / offen
-- Herzfrequenz der Apple Watch einbinden (z. B. Health Auto Export → Webhook).
+- Apple-Watch-Kurzbefehl (1.4.0) am echten iPhone prüfen: Aktionsnamen, Datumsformat, läuft er bei gesperrtem iPhone?
 - Erster echter Image-Build auf HA steht noch aus (im Cloud-Workspace kein Docker).

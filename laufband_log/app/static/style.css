@@ -18,6 +18,7 @@
   --speed: #4be3b6;    /* Tempo / Pace */
   --kcal: #ff5d73;     /* Kalorien */
   --steps: #c9a7ff;
+  --heart: #ff7aa8;    /* Puls (Apple Watch) */
   --danger: #ff6b5e;
   --hatch: rgba(255, 255, 255, .10);
 
@@ -40,6 +41,7 @@
     --speed: #0b8f6c;
     --kcal: #d4304c;
     --steps: #7a4fd0;
+    --heart: #c2185b;
     --danger: #c9302c;
     --hatch: rgba(0, 0, 0, .07);
   }
@@ -70,6 +72,7 @@ button { font: inherit; color: inherit; }
 .c-speed { color: var(--speed); }
 .c-kcal { color: var(--kcal); }
 .c-steps { color: var(--steps); }
+.c-heart { color: var(--heart); }
 .c-muted { color: var(--muted); }
 
 /* ------------------------------------------------ Anzeige wie am Laufband */

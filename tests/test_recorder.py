@@ -105,6 +105,24 @@ pad.stop()
 run(30)
 assert rec.list_workouts()[0]["person"] == "Freundin"
 
+# --- Apple-Watch-Daten: Zuordnung per Überschneidung, Quelle ohne Doppelzählung --
+wA = rec.get_workout(A["id"])
+s0, e0 = wA["started_at"], wA["ended_at"]
+hr = [(s0 - 300 + i * 5, 90 + (i % 20)) for i in range(int((e0 - s0 + 600) / 5))]
+steps = [(s0 - 600, s0 + 600, 1200, "Watch"),     # halb drin -> 600
+         (s0 + 600, e0, 3000, "Watch"),
+         (s0, e0, 500, "iPhone")]                  # andere Quelle, weniger -> ignoriert
+res = rec.attach_health(s0 - 120, e0 + 60, hr, steps, "Tim")
+assert res and res["id"] == A["id"], res
+assert res["watch_steps"] == 3600, res
+inside = [b for t, b in hr if s0 <= t <= e0]
+assert res["hr_count"] == len(inside) and res["hr_max"] == max(inside)
+again = rec.attach_health(s0 - 120, e0 + 60, hr, steps, None)   # erneut senden ersetzt
+assert again["hr_count"] == res["hr_count"]
+wA = rec.get_workout(A["id"])
+assert wA["person"] == "Tim" and len(wA["heart_rate"]) == res["hr_count"]
+assert rec.attach_health(1, 2, hr, steps) is None
+
 # --- Migration: alte DB ohne Spalte person ---------------------------------
 import sqlite3  # noqa: E402
 OLD = os.path.join(HERE, "old.db")

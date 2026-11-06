@@ -44,8 +44,17 @@ CREATE TABLE IF NOT EXISTS workouts (
     spark         TEXT DEFAULT '[]',
     state_json    TEXT DEFAULT '{}',        -- interner Zustand für Neustarts
     end_reason    TEXT,
-    person        TEXT                      -- wer gelaufen ist
+    person        TEXT,                     -- wer gelaufen ist
+    hr_avg        REAL,                     -- Puls laut Apple Watch (nachgetragen)
+    hr_max        REAL,
+    watch_steps   REAL                      -- Schritte laut Apple Watch
 );
+CREATE TABLE IF NOT EXISTS heart_rate (
+    workout_id INTEGER NOT NULL,
+    t          REAL NOT NULL,
+    bpm        REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_hr_w ON heart_rate(workout_id, t);
 CREATE TABLE IF NOT EXISTS samples (
     workout_id INTEGER NOT NULL,
     t          REAL NOT NULL,
@@ -153,8 +162,9 @@ class Recorder:
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
         cols = {r[1] for r in self.db.execute("PRAGMA table_info(workouts)")}
-        if "person" not in cols:   # Datenbanken vor 1.3.0
-            self.db.execute("ALTER TABLE workouts ADD COLUMN person TEXT")
+        for col in ("person TEXT", "hr_avg REAL", "hr_max REAL", "watch_steps REAL"):
+            if col.split()[0] not in cols:   # ältere Datenbanken
+                self.db.execute(f"ALTER TABLE workouts ADD COLUMN {col}")
         self.db.commit()
         self.min_duration_s = min_duration_s
         self.max_pause_s = max_pause_s
@@ -388,6 +398,7 @@ class Recorder:
     # ------------------------------------------------------------------ reads
     def delete(self, wid: int):
         self.db.execute("DELETE FROM samples WHERE workout_id=?", (wid,))
+        self.db.execute("DELETE FROM heart_rate WHERE workout_id=?", (wid,))
         self.db.execute("DELETE FROM workouts WHERE id=?", (wid,))
         self.db.commit()
 
@@ -396,10 +407,51 @@ class Recorder:
         self.db.commit()
         return cur.rowcount > 0
 
+    def attach_health(self, ws: float, we: float, hr: list, steps: list,
+                      person: str | None = None, now: float | None = None):
+        """Apple-Watch-Daten dem Workout zuordnen, das sich am meisten mit dem
+        Watch-Training [ws, we] überschneidet. Mehrfaches Senden ersetzt.
+        hr: [(t, bpm)], steps: [(start, ende, anzahl, quelle)]."""
+        now = time.time() if now is None else now
+        best, best_ov = None, 0.0
+        for r in self.db.execute("SELECT id, started_at, ended_at FROM workouts"
+                                 " WHERE started_at < ?", (we,)).fetchall():
+            s, e = r["started_at"], r["ended_at"] or now
+            ov = min(e, we) - max(s, ws)
+            if ov > best_ov:
+                best, best_ov = (r["id"], s, e), ov
+        if not best:
+            return None
+        wid, s, e = best
+        beats = sorted((t, b) for t, b in hr if s <= t <= e and b > 0)
+        # Schritte: anteilig im Workout-Fenster, nur die Quelle mit den meisten
+        # (iPhone und Watch zählen sonst doppelt)
+        by_src: dict = {}
+        for a, b, n, src in steps:
+            ov = min(b, e) - max(a, s)
+            if ov > 0 or (a == b and s <= a <= e):
+                frac = 1.0 if b <= a else ov / (b - a)
+                by_src[src] = by_src.get(src, 0.0) + n * frac
+        watch_steps = round(max(by_src.values())) if by_src else None
+        hr_avg = sum(b for _, b in beats) / len(beats) if beats else None
+        hr_max = max(b for _, b in beats) if beats else None
+        self.db.execute("DELETE FROM heart_rate WHERE workout_id=?", (wid,))
+        self.db.executemany("INSERT INTO heart_rate(workout_id, t, bpm) VALUES(?,?,?)",
+                            [(wid, t, b) for t, b in beats])
+        self.db.execute("UPDATE workouts SET hr_avg=?, hr_max=?, watch_steps=?,"
+                        " person=COALESCE(?, person) WHERE id=?",
+                        (hr_avg, hr_max, watch_steps, person, wid))
+        self.db.commit()
+        log.info("Watch-Daten für Workout %s: %d Pulswerte, %s Schritte (%s)",
+                 wid, len(beats), watch_steps, person)
+        return {"id": wid, "started_at": s, "hr_count": len(beats), "hr_avg": hr_avg,
+                "hr_max": hr_max, "watch_steps": watch_steps}
+
     def list_workouts(self):
         rows = self.db.execute(
             "SELECT id, started_at, ended_at, duration_s, distance_km, calories, steps,"
-            " avg_speed, max_speed, pause_s, pause_count, spark, person FROM workouts"
+            " avg_speed, max_speed, pause_s, pause_count, spark, person, hr_avg,"
+            " watch_steps FROM workouts"
             " WHERE status='done' ORDER BY started_at DESC").fetchall()
         out = []
         for r in rows:
@@ -423,6 +475,10 @@ class Recorder:
             rows += [tuple(b[1:]) for b in self.active.buffer]
         d["splits"] = compute_splits(rows, d["started_at"], d["intervals"])
         d["samples"] = downsample(rows, max_points)
+        hr = self.db.execute("SELECT t, bpm FROM heart_rate WHERE workout_id=?"
+                             " ORDER BY t", (wid,)).fetchall()
+        step = -(-len(hr) // max_points) or 1   # ponytail: jeder n-te Wert reicht fürs Bild
+        d["heart_rate"] = [list(x) for x in hr[::step]]
         return d
 
     def raw_samples(self, wid: int):

@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import asyncio
 import csv
+import hmac
 import io
 import json
 import logging
 import os
+import re
 import time
 from datetime import datetime
 from pathlib import Path
@@ -39,6 +41,7 @@ DEFAULTS = {
     "speed_number": "number.walkingpad_speed",
     "max_control_speed": 6.0,
     "people": ["Tim"],
+    "health_token": "",
 }
 
 
@@ -185,6 +188,75 @@ def make_app(rec: Recorder, ha: HAClient | None, ingress_only: bool,
     return app
 
 
+def parse_ts(v: str) -> float:
+    """ISO 8601 (wie Kurzbefehle ihn formatiert) oder Unix-Sekunden."""
+    v = v.strip()
+    try:
+        return float(v)
+    except ValueError:
+        return datetime.fromisoformat(v.replace("Z", "+00:00")).timestamp()
+
+
+def parse_num(v: str) -> float:
+    """Erste Zahl im Text, deutsch oder englisch formatiert ('1.234', '98,5', '98 bpm')."""
+    m = re.search(r"\d[\d.,]*", v)
+    if not m:
+        raise ValueError(f"Keine Zahl in {v[:30]!r}")
+    tok = m.group().rstrip(".,")
+    if "," in tok:
+        tok = tok.replace(".", "").replace(",", ".")
+    elif re.fullmatch(r"\d{1,3}(\.\d{3})+", tok):
+        tok = tok.replace(".", "")
+    return float(tok)
+
+
+def parse_lines(text: str, n: int) -> list[list[str]]:
+    """Zeilen 'a;b;…' aus dem Kurzbefehl, leere Zeilen ignorieren."""
+    out = []
+    for line in (text or "").splitlines():
+        if line.strip():
+            parts = line.split(";")
+            if len(parts) < n:
+                raise ValueError(f"Zeile hat zu wenige Felder: {line[:60]!r}")
+            out.append(parts)
+    return out
+
+
+def make_health_app(rec: Recorder, opts: dict) -> web.Application:
+    """Eigener Port für den iPhone-Kurzbefehl (Ingress ist vom iPhone aus
+    nicht erreichbar). Nur mit Token aus den App-Optionen."""
+    async def health(request):
+        token = opts.get("health_token") or ""
+        if not token:
+            return web.Response(status=503, text="Laufband-Log: In den App-Optionen ist kein health_token gesetzt.")
+        got = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        if not hmac.compare_digest(got.encode(), token.encode()):
+            return web.Response(status=401, text="Laufband-Log: Token falsch.")
+        try:
+            body = await request.json()
+            person = (body.get("person") or "").strip() or None
+            if person is not None and person not in opts["people"]:
+                raise ValueError(f"Unbekannte Person {person!r}, erlaubt: {', '.join(opts['people'])}")
+            ws, we = parse_ts(body["workout_start"]), parse_ts(body["workout_end"])
+            hr = [(parse_ts(p[0]), parse_num(p[1])) for p in parse_lines(body.get("heart_rate"), 2)]
+            steps = [(parse_ts(p[0]), parse_ts(p[1]), parse_num(p[2]), p[3].strip() if len(p) > 3 else "")
+                     for p in parse_lines(body.get("steps"), 3)]
+        except (ValueError, KeyError, TypeError, AttributeError) as e:
+            return web.Response(status=400, text=f"Laufband-Log: Daten unlesbar ({e}).")
+        res = rec.attach_health(ws, we, hr, steps, person)
+        if not res:
+            return web.Response(status=404, text="Laufband-Log: Kein Laufband-Workout in diesem Zeitraum gefunden.")
+        when = datetime.fromtimestamp(res["started_at"]).strftime("%d.%m. %H:%M")
+        parts = [f"Ø {res['hr_avg']:.0f} bpm" if res["hr_avg"] else "kein Puls"]
+        if res["watch_steps"] is not None:
+            parts.append(f"{res['watch_steps']:,} Schritte".replace(",", "."))
+        return web.Response(text=f"Laufband {when}: " + ", ".join(parts))
+
+    app = web.Application(client_max_size=8 * 1024 * 1024)
+    app.router.add_post("/health", health)
+    return app
+
+
 async def main():
     opts = load_options()
     DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -220,6 +292,9 @@ async def main():
     await runner.setup()
     port = int(os.environ.get("PORT", "8099"))
     await web.TCPSite(runner, "0.0.0.0", port).start()
+    health_runner = web.AppRunner(make_health_app(rec, opts), access_log=None)
+    await health_runner.setup()
+    await web.TCPSite(health_runner, "0.0.0.0", int(os.environ.get("HEALTH_PORT", "8098"))).start()
     log.info("Laufband-Log läuft auf Port %s, beobachte %s", port, ", ".join(entity_map))
     await asyncio.gather(ha.run(), ticker())
 
